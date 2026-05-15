@@ -1,11 +1,9 @@
 ```
-    _    ____   ___  ____    _    ____        ____ _     ___      ____    _    _  __
-   / \  / ___| / _ \/ ___|  / \  |  _ \      / ___| |   |_ _|    | __ )  / \  | |/ /
-  / _ \ \___ \| | | \___ \ / _ \ | |_) |____| |   | |    | |_____|  _ \ / _ \ | ' /
- / ___ \ ___) | |_| |___) / ___ \|  _ <_____| |___| |___ | |_____| |_) / ___ \| . \
-/_/   \_\____/ \___/|____/_/   \_\_| \_\     \____|_____|___|    |____/_/   \_\_|\_\
-                                                                                    
-                            ASOSAR-CLI-BATUN
+    _    ____   ___  ____    _    ____        ____ _     ___      ____    _  _____ _   _ _   _ 
+   / \  / ___| / _ \/ ___|  / \  |  _ \      / ___| |   |_ _|    | __ )  / \|_   _| | | | \ | |
+  / _ \ \___ \| | | \___ \ / _ \ | |_) |____| |   | |    | |_____|  _ \ / _ \ | | | | | |  \| |
+ / ___ \ ___) | |_| |___) / ___ \|  _ <_____| |___| |___ | |_____| |_) / ___ \| | | |_| | |\  |
+/_/   \_\____/ \___/|____/_/   \_\_| \_\     \____|_____|___|    |____/_/   \_\_|  \___/|_| \_|
 ```
 
 # asosar-cli-batun
@@ -33,7 +31,7 @@ Or double-click `batun.bat` in Explorer.
 From **PowerShell 5+** (run as administrator for best results):
 
 ```
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/asosar2195/asosar-cli-batun/main/batun.ps1)))
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/asosar2195/asosar-cli-batun/master/batun.ps1)))
 ```
 
 This downloads the script into memory and runs it immediately — no file saved to disk.
