@@ -142,6 +142,7 @@ function Show-InteractiveMenu {
 
     $oldCursor = $host.UI.RawUI.CursorSize
     $host.UI.RawUI.CursorSize = 0
+    $lastDrawnLines = 0
 
     function Get-Filtered {
         param([string]$F)
@@ -170,7 +171,7 @@ function Show-InteractiveMenu {
             $cursor = [Math]::Min($cursor, $fc - 1)
         }
 
-        $host.UI.RawUI.CursorPosition = @{ X = 0; Y = 0 }
+        Clear-Host
         Show-AsosarBanner
         Write-Host ''
 
