@@ -64,43 +64,8 @@ function Get-InstalledSoftware {
     return $results | Sort-Object DisplayName
 }
 
-function Get-InstalledAppx {
-    $results = [System.Collections.Generic.List[PSObject]]::new()
-    $packages = Get-AppxPackage -ErrorAction SilentlyContinue
-    if (-not $packages) { return $results }
-
-    foreach ($pkg in $packages) {
-        if ($pkg.SignatureKind -eq 'System' -and $pkg.Name -match 'WindowsStore|Windows\.(Shell|UI|Apps)') {
-            continue
-        }
-        $results.Add([PSCustomObject]@{
-            DisplayName     = "$($pkg.Name)"
-            Publisher       = $pkg.Publisher
-            Version         = $pkg.Version
-            UninstallString = ''
-            QuietString     = ''
-            ProductCode     = $pkg.PackageFullName
-            InstallDate     = ''
-            SizeMB          = 0
-            Type            = 'APPX'
-            RegistryPath    = ''
-            CanUninstall    = $true
-        })
-    }
-
-    return $results | Sort-Object DisplayName
-}
-
 function Get-UninstallCommand {
     param([object]$Item)
-
-    if ($Item.Type -eq 'APPX') {
-        return @{
-            Command     = 'powershell'
-            Arguments   = "-NoProfile -Command `"Remove-AppxPackage -Package '$($Item.ProductCode)' -Confirm:`$false`""
-            Method      = 'powershell'
-        }
-    }
 
     if ($Item.Type -eq 'MSI') {
         $code = $Item.ProductCode
@@ -397,9 +362,7 @@ if (-not $isAdmin) {
 }
 
 Write-Host '  Scanning installed software... ' -NoNewline
-$win32 = Get-InstalledSoftware
-$appx  = Get-InstalledAppx
-$all   = @($win32) + @($appx)
+$all = Get-InstalledSoftware
 Write-Host "$($all.Count) programs found." -ForegroundColor Green
 Start-Sleep -Milliseconds 500
 
