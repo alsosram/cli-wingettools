@@ -426,7 +426,7 @@ while ($keepGoing) {
     $confirmed = $false
     $doMenu = $true
     while ($doMenu) {
-        $host.UI.RawUI.CursorPosition = @{ X = 0; Y = 0 }
+        Clear-Host
         Show-AsosarBanner
         Write-Host ''
         Write-Host '  ===============================================' -ForegroundColor Yellow
@@ -454,7 +454,7 @@ while ($keepGoing) {
 
     if (-not $confirmed) { continue }
 
-    $host.UI.RawUI.CursorPosition = @{ X = 0; Y = 0 }
+    Clear-Host
     Show-AsosarBanner
     Write-Host ''
     Invoke-BatchUninstall -Items $selected
@@ -468,7 +468,7 @@ while ($keepGoing) {
     }
 
     Write-Host ''
-    $host.UI.RawUI.CursorPosition = @{ X = 0; Y = 0 }
+    Clear-Host
     Show-AsosarBanner
     Write-Host ''
     Write-Host '  [Enter] Back to program list' -ForegroundColor Yellow
