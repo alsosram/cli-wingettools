@@ -31,7 +31,7 @@ Or double-click `batun.bat` in Explorer.
 From **PowerShell 5+** (run as administrator for best results):
 
 ```
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/alsosar/asosar-cli-batun/master/batun.ps1)))
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/alsosar/alsosar-cli-batun/master/batun.ps1)))
 ```
 
 This downloads the script into memory and runs it immediately — no file saved to disk.
