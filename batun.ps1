@@ -1,130 +1,166 @@
 #Requires -Version 5.0
 
-param(
-    [switch]$WhatIf
-)
-
 $ErrorActionPreference = 'Stop'
 
 function Show-AsosarBanner {
     $banner = @'
-░█████╗░██╗░░░░░██╗░░░░░░██████╗░░█████╗░████████╗██╗░░░██╗███╗░░██╗
-██╔══██╗██║░░░░░██║░░░░░░██╔══██╗██╔══██╗╚══██╔══╝██║░░░██║████╗░██║
-██║░░╚═╝██║░░░░░██║█████╗██████╦╝███████║░░░██║░░░██║░░░██║██╔██╗██║
-██║░░██╗██║░░░░░██║╚════╝██╔══██╗██╔══██║░░░██║░░░██║░░░██║██║╚████║
-╚█████╔╝███████╗██║░░░░░░██████╦╝██║░░██║░░░██║░░░╚██████╔╝██║░╚███║
-░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═╝░░╚═╝░░░╚═╝░░░░╚═════╝░╚═╝░░╚══╝
+    _    _     ____   ___  ____    _    ____        ____ _     ___      ____    _  _____ _   _ _   _ 
+   / \  | |   / ___| / _ \/ ___|  / \  |  _ \      / ___| |   |_ _|    | __ )  / \|_   _| | | | \ | |
+  / _ \ | |   \___ \| | | \___ \ / _ \ | |_) |____| |   | |    | |_____|  _ \ / _ \ | | | | | |  \| |
+ / ___ \| |___ ___) | |_| |___) / ___ \|  _ <_____| |___| |___ | |_____| |_) / ___ \| | | | |_| | |\  |
+/_/   \_\_____|____/ \___/|____/_/   \_\_| \_\     \____|_____|___|    |____/_/   \_\_|  \___/|_| \_|
+                                                                                                      
+                        Windows Batch Uninstaller — Search & Multi-Select
 '@
     Write-Host "`n$banner" -ForegroundColor Cyan
 }
 
-function Get-InstalledSoftware {
-    $results = [System.Collections.Generic.List[PSObject]]::new()
-    $paths = @(
-        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-    )
+function WaitForKey {
+    $null = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+}
 
-    foreach ($path in $paths) {
-        $items = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue
-        if (-not $items) { continue }
-        foreach ($item in $items) {
-            $name = $item.DisplayName
+function Show-MainMenu {
+    Clear-Host
+    Show-AsosarBanner
+    Write-Host ''
+    Write-Host '  [1] Uninstall Programs' -ForegroundColor Yellow
+    Write-Host '  [2] Remove Printers / Ports' -ForegroundColor Yellow
+    Write-Host '  [Q] Quit'
+    Write-Host ''
+
+    $key = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    switch ([char]$key.Character) {
+        '1' { return 'programs' }
+        '2' { return 'printers' }
+        'q' { return 'quit' }
+        'Q' { return 'quit' }
+        default { return $null }
+    }
+}
+
+function Get-WingetPackages {
+    try {
+        $raw = winget list --accept-source-agreements 2>$null
+        if (-not $raw) { return @() }
+
+        $lines = $raw -split "`r`n|`n"
+        $headerIdx = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^Name\s{2,}Id') {
+                $headerIdx = $i
+                break
+            }
+        }
+        if ($headerIdx -lt 0) { return @() }
+
+        $results = @()
+        for ($i = $headerIdx + 2; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            if ($line.Trim() -eq '') { continue }
+
+            $parts = $line -split '\s{2,}', 5
+            if ($parts.Count -lt 3) { continue }
+
+            $name = $parts[0].Trim()
+            $id   = $parts[1].Trim()
+            $ver  = $parts[2].Trim()
+
             if ([string]::IsNullOrWhiteSpace($name)) { continue }
-            if ($item.SystemComponent -eq 1)  { continue }
-            if ($name -match '^Update for|^Security Update|^Hotfix |^KB\d{6,}') { continue }
 
-            $uninstStr = ($item.UninstallString -or '')
-            $prodCode  = ($item.PSChildName -or '')
-            $isMSI     = ($item.WindowsInstaller -eq 1) -or ($uninstStr -match 'msiexec')
-            $sizeMB    = 0
-            if ($item.EstimatedSize) { $sizeMB = [math]::Round($item.EstimatedSize / 1MB, 1) }
-            $type      = if ($isMSI) { 'MSI' } else { 'EXE' }
-            $regPath   = $path -replace '\*$', $item.PSChildName
-            $canUninst = $null -ne ($uninstStr -or $prodCode)
-
-            $results.Add([PSCustomObject]@{
-                DisplayName     = $name
-                Publisher       = ($item.Publisher -or '')
-                Version         = ($item.DisplayVersion -or '')
-                UninstallString = $uninstStr
-                QuietString     = ($item.QuietUninstallString -or '')
-                ProductCode     = $prodCode
-                InstallDate     = ($item.InstallDate -or '')
-                SizeMB          = $sizeMB
-                Type            = $type
-                RegistryPath    = $regPath
-                CanUninstall    = $canUninst
-            })
-        }
-    }
-
-    return $results | Sort-Object DisplayName
-}
-
-function Get-UninstallCommand {
-    param([object]$Item)
-
-    if ($Item.Type -eq 'MSI') {
-        $code = $Item.ProductCode
-        if ($code -match '^{?[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}}?$') {
-            $code = $code -replace '^\{|\}$', ''
-            return @{
-                Command     = 'msiexec'
-                Arguments   = "/x {$code} /qn /norestart"
-                Method      = 'msiexec'
+            $results += [PSCustomObject]@{
+                DisplayName = $name
+                Id          = $id
+                Version     = $ver
+                Type        = 'WINGET'
             }
         }
-        $str = $Item.UninstallString
-        if ($str -match 'msiexec') {
-            $argPart = $str -replace 'msiexec\s*/i\s*', '/x '
-            $argPart = $argPart -replace 'msiexec(/[a-z]+)*\s*', ''
-            return @{
-                Command     = 'msiexec'
-                Arguments   = "$argPart /qn /norestart"
-                Method      = 'msiexec'
-            }
-        }
-    }
-
-    $str = if ($Item.QuietString) { $Item.QuietString } else { $Item.UninstallString }
-    if (-not $str) { return $null }
-
-    return @{
-        Command     = "$env:ComSpec"
-        Arguments   = "/c `"$str`""
-        Method      = 'cmd'
+        return $results | Sort-Object DisplayName
+    } catch {
+        return @()
     }
 }
 
-function Invoke-UninstallItem {
-    param([object]$Item)
+function Get-PrinterList {
+    $printers = Get-Printer -ErrorAction SilentlyContinue
+    if (-not $printers) { return @() }
+    return $printers | ForEach-Object {
+        [PSCustomObject]@{
+            DisplayName = $_.Name
+            Type        = 'PRINTER'
+            Shared      = $_.Shared
+            PortName    = $_.PortName
+            DriverName  = $_.DriverName
+        }
+    } | Sort-Object DisplayName
+}
 
-    $cmd = Get-UninstallCommand -Item $Item
-    if (-not $cmd) {
-        return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $false; ExitCode = -1; Error = 'No uninstall command available' }
-    }
+function Get-PrinterPortList {
+    $ports = Get-PrinterPort -ErrorAction SilentlyContinue
+    if (-not $ports) { return @() }
+    return $ports | ForEach-Object {
+        [PSCustomObject]@{
+            DisplayName = $_.Name
+            Type        = 'PORT'
+            Description = $_.Description
+        }
+    } | Sort-Object DisplayName
+}
+
+function Invoke-WingetUninstall {
+    param([object]$Item)
 
     try {
-        if ($cmd.Method -eq 'msiexec') {
-            $proc = Start-Process -FilePath $cmd.Command -ArgumentList $cmd.Arguments -Wait -PassThru -ErrorAction SilentlyContinue
-        } elseif ($cmd.Method -eq 'powershell') {
-            $proc = Start-Process -FilePath $cmd.Command -ArgumentList $cmd.Arguments -Wait -PassThru -ErrorAction SilentlyContinue
+        $id = $Item.Id
+        if ([string]::IsNullOrWhiteSpace($id)) { $id = "`"$($Item.DisplayName)`"" }
+        else { $id = "--id `"$id`"" }
+
+        Write-Host "  Running: winget uninstall $id ... " -NoNewline
+        $output = winget uninstall $id --accept-source-agreements 2>&1
+        $exitCode = $LASTEXITCODE
+
+        $ok = ($exitCode -eq 0)
+        if ($ok) {
+            Write-Host 'OK' -ForegroundColor Green
         } else {
-            $proc = Start-Process -FilePath $cmd.Command -ArgumentList $cmd.Arguments -Wait -PassThru -WindowStyle Hidden -ErrorAction SilentlyContinue
+            Write-Host 'FAILED' -ForegroundColor Red
+            Write-Host "         Exit code: $exitCode" -ForegroundColor DarkRed
         }
-
-        if ($null -eq $proc) {
-            $proc = Start-Process -FilePath $cmd.Command -ArgumentList $cmd.Arguments -Wait -PassThru -WindowStyle Hidden -ErrorAction SilentlyContinue
-        }
-
-        $exitCode = if ($proc) { $proc.ExitCode } else { -1 }
-        $ok = ($exitCode -eq 0 -or $exitCode -eq 3010 -or $exitCode -eq 1641 -or $exitCode -eq 2359302)
-        $errMsg = if ($ok -or $null -eq $proc) { '' } else { "Exit code: $exitCode" }
-        return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $ok; ExitCode = $exitCode; Error = $errMsg }
+        return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $ok; ExitCode = $exitCode; Error = if (-not $ok) { "Exit code: $exitCode" } else { '' } }
     } catch {
+        Write-Host 'FAILED' -ForegroundColor Red
         return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $false; ExitCode = -1; Error = $_.Exception.Message }
+    }
+}
+
+function Invoke-PrinterRemove {
+    param([object]$Item)
+
+    try {
+        Write-Host "  Removing printer: $($Item.DisplayName) ... " -NoNewline
+        Set-Printer -Name $Item.DisplayName -Shared $false -ErrorAction SilentlyContinue
+        Remove-Printer -Name $Item.DisplayName -ErrorAction SilentlyContinue
+        Write-Host 'OK' -ForegroundColor Green
+        return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $true; Error = '' }
+    } catch {
+        Write-Host 'FAILED' -ForegroundColor Red
+        Write-Host "         $($_.Exception.Message)" -ForegroundColor DarkRed
+        return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $false; Error = $_.Exception.Message }
+    }
+}
+
+function Invoke-PortRemove {
+    param([object]$Item)
+
+    try {
+        Write-Host "  Removing port: $($Item.DisplayName) ... " -NoNewline
+        Remove-PrinterPort -Name $Item.DisplayName -ErrorAction SilentlyContinue
+        Write-Host 'OK' -ForegroundColor Green
+        return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $true; Error = '' }
+    } catch {
+        Write-Host 'FAILED' -ForegroundColor Red
+        Write-Host "         $($_.Exception.Message)" -ForegroundColor DarkRed
+        return [PSCustomObject]@{ Name = $Item.DisplayName; Success = $false; Error = $_.Exception.Message }
     }
 }
 
@@ -141,15 +177,12 @@ function Show-InteractiveMenu {
 
     $oldCursor = $host.UI.RawUI.CursorSize
     $host.UI.RawUI.CursorSize = 0
-    $lastDrawnLines = 0
 
     function Get-Filtered {
         param([string]$F)
         if ([string]::IsNullOrWhiteSpace($F)) { return $AllItems }
         $f = $F.ToUpperInvariant()
-        return $AllItems | Where-Object {
-            $_.DisplayName.ToUpperInvariant().Contains($f) -or $_.Publisher.ToUpperInvariant().Contains($f)
-        }
+        return $AllItems | Where-Object { $_.DisplayName.ToUpperInvariant().Contains($f) }
     }
 
     function Truncate {
@@ -191,16 +224,13 @@ function Show-InteractiveMenu {
             $isCurrent = ($i -eq $cursor)
             $isSel     = $selected.ContainsKey($AllItems.IndexOf($item))
 
-            $arrow = ' '
-            if ($isCurrent) { $arrow = '>' }
-            $check = ' '
-            if ($isSel) { $check = 'x' }
+            $arrow = if ($isCurrent) { '>' } else { ' ' }
+            $check = if ($isSel) { 'x' } else { ' ' }
             $typeTag = "[$($item.Type)]"
 
             $name  = Truncate -S $item.DisplayName -MaxLen 50
             $extra = ''
-            if ($item.SizeMB -gt 0)  { $extra = " $($item.SizeMB) MB" }
-            if ($item.Version)       { $extra += " v$($item.Version)" }
+            if ($item.Version) { $extra += " v$($item.Version)" }
             $line = " $arrow [$check] $typeTag $name$extra"
 
             if ($isCurrent) {
@@ -223,7 +253,7 @@ function Show-InteractiveMenu {
         Write-Host '----------------------------------------------------------------------' -ForegroundColor DarkGray
         Write-Host "  Page $curPage/$totalPages  |  Selected: $selCount / $($AllItems.Count)" -NoNewline
         if ($filterText) { Write-Host "  |  Showing: $fc (filter: `"$filterText`")" -NoNewline }
-        Write-Host "  |  Total apps: $($AllItems.Count)"
+        Write-Host "  |  Total: $($AllItems.Count)"
         Write-Host '----------------------------------------------------------------------' -ForegroundColor DarkGray
 
         $key = $host.UI.RawUI.ReadKey('IncludeKeyDown,NoEcho')
@@ -294,53 +324,176 @@ function Show-InteractiveMenu {
     } while (-not $quit)
 
     $host.UI.RawUI.CursorSize = $oldCursor
-    $host.UI.RawUI.CursorPosition = @{ X = 0; Y = 0 }
+    Clear-Host
     Show-AsosarBanner
     return $result
 }
 
-function Invoke-BatchUninstall {
-    param([object[]]$Items)
+function Run-ProgramsMode {
+    Write-Host '  Scanning with winget... ' -NoNewline
+    $packages = Get-WingetPackages
+    Write-Host "$($packages.Count) packages found." -ForegroundColor Green
+    Start-Sleep -Milliseconds 300
 
-    $total   = $Items.Count
-    $ok      = 0
-    $failed  = 0
-    $details = [System.Collections.Generic.List[PSObject]]::new()
-
-    Write-Host ''
-    Write-Host "  Starting batch uninstall of $total program(s)..." -ForegroundColor Yellow
-    Write-Host '  -------------------------------------------------' -ForegroundColor DarkGray
-
-    for ($i = 0; $i -lt $total; $i++) {
-        $item = $Items[$i]
-        Write-Progress -Activity 'Batch Uninstall' -Status $item.DisplayName -PercentComplete (($i / $total) * 100) -CurrentOperation "$($i+1)/$total"
-
-        Write-Host "  [$($i+1)/$total] Uninstalling: " -NoNewline
-        Write-Host $item.DisplayName -NoNewline
-
-        $result = Invoke-UninstallItem -Item $item
-
-        Write-Host ' ... ' -NoNewline
-        if ($result.Success) {
-            Write-Host 'OK' -ForegroundColor Green
-            $ok++
-        } else {
-            Write-Host 'FAILED' -ForegroundColor Red
-            if ($result.Error) { Write-Host "         $($result.Error)" -ForegroundColor DarkRed }
-            $failed++
-        }
-        $details.Add($result)
+    if ($packages.Count -eq 0) {
+        Write-Host '  No packages found.' -ForegroundColor Red
+        Write-Host '  Press any key to continue...'
+        WaitForKey
+        return
     }
 
-    Write-Progress -Activity 'Batch Uninstall' -Completed
+    $keepGoing = $true
+    while ($keepGoing) {
+        $selected = Show-InteractiveMenu -AllItems $packages
+        if (-not $selected -or $selected.Count -eq 0) { $keepGoing = $false; continue }
 
-    Write-Host ''
-    Write-Host '  -------------------------------------------------' -ForegroundColor DarkGray
-    Write-Host '  Batch uninstall complete: ' -NoNewline
-    Write-Host "$ok succeeded" -NoNewline -ForegroundColor Green
-    Write-Host ', ' -NoNewline
-    Write-Host "$failed failed" -NoNewline -ForegroundColor Red
-    Write-Host " / $total total"
+        $confirmed = $false
+        $doMenu = $true
+        while ($doMenu) {
+            Clear-Host
+            Show-AsosarBanner
+            Write-Host ''
+            Write-Host '  ===============================================' -ForegroundColor Yellow
+            Write-Host "  Uninstall $($selected.Count) package(s):" -ForegroundColor Yellow
+            foreach ($item in $selected) {
+                Write-Host "    * $($item.DisplayName)" -ForegroundColor DarkYellow
+            }
+            Write-Host '  ===============================================' -ForegroundColor Yellow
+            Write-Host ''
+            Write-Host '  [Y] Proceed with uninstall' -ForegroundColor Green
+            Write-Host '  [N] Cancel — back to list' -ForegroundColor Yellow
+            Write-Host '  [Q] Quit'
+            Write-Host ''
+
+            $key = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+            switch ([char]$key.Character) {
+                'y' { $confirmed = $true; $doMenu = $false }
+                'Y' { $confirmed = $true; $doMenu = $false }
+                'n' { $doMenu = $false }
+                'N' { $doMenu = $false }
+                'q' { $doMenu = $false; $keepGoing = $false }
+                'Q' { $doMenu = $false; $keepGoing = $false }
+            }
+        }
+
+        if (-not $confirmed) { continue }
+
+        Clear-Host
+        Show-AsosarBanner
+        Write-Host ''
+
+        $total  = $selected.Count
+        $ok     = 0
+        $failed = 0
+        for ($i = 0; $i -lt $total; $i++) {
+            Write-Progress -Activity 'Batch Uninstall' -Status $selected[$i].DisplayName -PercentComplete (($i / $total) * 100) -CurrentOperation "$($i+1)/$total"
+            Write-Host "  [$($i+1)/$total] " -NoNewline
+            $result = Invoke-WingetUninstall -Item $selected[$i]
+            if ($result.Success) { $ok++ } else { $failed++ }
+        }
+        Write-Progress -Activity 'Batch Uninstall' -Completed
+
+        Write-Host ''
+        Write-Host '  -------------------------------------------------' -ForegroundColor DarkGray
+        Write-Host '  Complete: ' -NoNewline
+        Write-Host "$ok succeeded" -NoNewline -ForegroundColor Green
+        Write-Host ', ' -NoNewline
+        Write-Host "$failed failed" -NoNewline -ForegroundColor Red
+        Write-Host " / $total total"
+
+        Write-Host ''
+        Clear-Host
+        Show-AsosarBanner
+        Write-Host ''
+        Write-Host '  [Enter] Back to program list' -ForegroundColor Yellow
+        Write-Host '  [Q] Main menu'
+        Write-Host ''
+        $exitKey = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        if ($exitKey.VirtualKeyCode -eq 81) { $keepGoing = $false }
+    }
+}
+
+function Run-PrintersMode {
+    $keepGoing = $true
+    while ($keepGoing) {
+        Clear-Host
+        Show-AsosarBanner
+        Write-Host ''
+        Write-Host '  [1] List / Remove Printers' -ForegroundColor Yellow
+        Write-Host '  [2] List / Remove Printer Ports' -ForegroundColor Yellow
+        Write-Host '  [3] Remove ALL printers and ports' -ForegroundColor Red
+        Write-Host '  [Q] Back to main menu'
+        Write-Host ''
+
+        $key = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        switch ([char]$key.Character) {
+            '1' {
+                $printers = Get-PrinterList
+                if ($printers.Count -eq 0) {
+                    Write-Host ''; Write-Host '  No printers found.' -ForegroundColor Red; Write-Host '  Press any key...'; WaitForKey; continue
+                }
+                $selected = Show-InteractiveMenu -AllItems $printers
+                if (-not $selected -or $selected.Count -eq 0) { continue }
+
+                Clear-Host; Show-AsosarBanner; Write-Host ''
+                Write-Host "  Removing $($selected.Count) printer(s)..." -ForegroundColor Yellow
+                Write-Host '  -------------------------------------------------' -ForegroundColor DarkGray
+                $ok = 0; $fail = 0
+                foreach ($item in $selected) {
+                    $r = Invoke-PrinterRemove -Item $item
+                    if ($r.Success) { $ok++ } else { $fail++ }
+                }
+                Write-Host "  Done: $ok removed, $fail failed" -ForegroundColor Yellow
+                Write-Host ''; Write-Host '  Press any key...'; WaitForKey
+            }
+            '2' {
+                $ports = Get-PrinterPortList
+                if ($ports.Count -eq 0) {
+                    Write-Host ''; Write-Host '  No printer ports found.' -ForegroundColor Red; Write-Host '  Press any key...'; WaitForKey; continue
+                }
+                $selected = Show-InteractiveMenu -AllItems $ports
+                if (-not $selected -or $selected.Count -eq 0) { continue }
+
+                Clear-Host; Show-AsosarBanner; Write-Host ''
+                Write-Host "  Removing $($selected.Count) port(s)..." -ForegroundColor Yellow
+                Write-Host '  -------------------------------------------------' -ForegroundColor DarkGray
+                $ok = 0; $fail = 0
+                foreach ($item in $selected) {
+                    $r = Invoke-PortRemove -Item $item
+                    if ($r.Success) { $ok++ } else { $fail++ }
+                }
+                Write-Host "  Done: $ok removed, $fail failed" -ForegroundColor Yellow
+                Write-Host ''; Write-Host '  Press any key...'; WaitForKey
+            }
+            '3' {
+                Clear-Host; Show-AsosarBanner; Write-Host ''
+                Write-Host '  This will remove ALL non-system printers and ports.' -ForegroundColor Red
+                Write-Host '  [Y] Proceed  [N] Cancel'
+                Write-Host ''
+                $ck = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+                if ([char]$ck.Character -ne 'y' -and [char]$ck.Character -ne 'Y') { continue }
+
+                $printers = Get-PrinterList
+                $ports = Get-PrinterPortList
+                $ok = 0; $fail = 0
+
+                Write-Host ''; Write-Host '  Removing printers...' -ForegroundColor Yellow
+                foreach ($p in $printers) {
+                    $r = Invoke-PrinterRemove -Item $p
+                    if ($r.Success) { $ok++ } else { $fail++ }
+                }
+                Write-Host '  Removing ports...' -ForegroundColor Yellow
+                foreach ($p in $ports) {
+                    $r = Invoke-PortRemove -Item $p
+                    if ($r.Success) { $ok++ } else { $fail++ }
+                }
+                Write-Host "  Done: $ok removed, $fail failed" -ForegroundColor Yellow
+                Write-Host ''; Write-Host '  Press any key...'; WaitForKey
+            }
+            'q' { $keepGoing = $false }
+            'Q' { $keepGoing = $false }
+        }
+    }
 }
 
 # ------------------------------------------------------------------
@@ -357,86 +510,17 @@ $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
 
 if (-not $isAdmin) {
     Write-Host '  [!] Not running as Administrator.' -ForegroundColor Yellow
-    Write-Host '  Some uninstallers may fail without elevation. Press any key to continue...'
-    $null = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-}
-
-Write-Host '  Scanning installed software... ' -NoNewline
-$all = Get-InstalledSoftware
-Write-Host "$($all.Count) programs found." -ForegroundColor Green
-Start-Sleep -Milliseconds 500
-
-if ($all.Count -eq 0) {
-    Write-Host '  No installed programs found.' -ForegroundColor Red
-    Write-Host ''
-    Write-Host '  Press any key to exit...'
-    $null = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-    return
+    Write-Host '  Printer removal and some winget uninstalls require elevation. Continuing anyway.' -ForegroundColor DarkGray
+    Write-Host '  Press any key to continue...'
+    WaitForKey
 }
 
 $keepGoing = $true
 while ($keepGoing) {
-    $selected = Show-InteractiveMenu -AllItems $all
-    if (-not $selected -or $selected.Count -eq 0) {
-        Write-Host '  No programs selected. Exiting.' -ForegroundColor DarkGray
-        Write-Host ''
-        Write-Host '  Press any key to exit...'
-        $null = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-        $keepGoing = $false
-        continue
+    $mode = Show-MainMenu
+    switch ($mode) {
+        'programs'  { Run-ProgramsMode }
+        'printers'  { Run-PrintersMode }
+        'quit'      { $keepGoing = $false }
     }
-
-    $confirmed = $false
-    $doMenu = $true
-    while ($doMenu) {
-        Clear-Host
-        Show-AsosarBanner
-        Write-Host ''
-        Write-Host '  ===============================================' -ForegroundColor Yellow
-        Write-Host "  You are about to uninstall $($selected.Count) program(s):" -ForegroundColor Yellow
-        foreach ($item in $selected) {
-            Write-Host "    * $($item.DisplayName)  [$($item.Type)]" -ForegroundColor DarkYellow
-        }
-        Write-Host '  ===============================================' -ForegroundColor Yellow
-        Write-Host ''
-        Write-Host '  [Y] Proceed with uninstall' -ForegroundColor Green
-        Write-Host '  [N] Cancel — back to program list' -ForegroundColor Yellow
-        Write-Host '  [Q] Quit'
-        Write-Host ''
-
-        $confirmKey = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-        switch ([char]$confirmKey.Character) {
-            'y' { $confirmed = $true; $doMenu = $false }
-            'Y' { $confirmed = $true; $doMenu = $false }
-            'n' { $doMenu = $false }
-            'N' { $doMenu = $false }
-            'q' { $doMenu = $false; $keepGoing = $false }
-            'Q' { $doMenu = $false; $keepGoing = $false }
-        }
-    }
-
-    if (-not $confirmed) { continue }
-
-    Clear-Host
-    Show-AsosarBanner
-    Write-Host ''
-    Invoke-BatchUninstall -Items $selected
-
-    if ($isAdmin) {
-        Write-Host ''
-        Write-Host '  Tip: Some programs may leave leftovers. Consider running a cleanup tool.' -ForegroundColor DarkGray
-    } else {
-        Write-Host ''
-        Write-Host '  Tip: Run as Administrator for better results with system-level programs.' -ForegroundColor DarkGray
-    }
-
-    Write-Host ''
-    Clear-Host
-    Show-AsosarBanner
-    Write-Host ''
-    Write-Host '  [Enter] Back to program list' -ForegroundColor Yellow
-    Write-Host '  [Q] Quit'
-    Write-Host ''
-    $exitKey = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-    if ($exitKey.VirtualKeyCode -eq 81) { $keepGoing = $false }
 }
