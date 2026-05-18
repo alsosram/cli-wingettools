@@ -1,5 +1,5 @@
 @echo off
-title asosar-cli-batun - Interactive Batch Uninstaller
+title alsosar-cli-wingettools - Winget Tools for Windows
 
 powershell -ExecutionPolicy Bypass -NoProfile -File "%~dp0batun.ps1" %*
 
