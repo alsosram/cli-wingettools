@@ -466,54 +466,58 @@ function Run-AllUpgrades {
 }
 
 function Get-StarfieldKey {
-    $width = [Console]::WindowWidth
-    $height = [Console]::WindowHeight
-    $starRows = [Math]::Max(1, $height - 15)
+    $w = $Host.UI.RawUI.WindowSize.Width
+    $h = $Host.UI.RawUI.WindowSize.Height
+    $rows = [Math]::Max(1, $h - 15)
 
-    $starChars = @('·', '∙', '°', '˙')
-    $stars = 1..80 | ForEach-Object {
+    $chars = @('·', '∙', '°', '˙')
+    $stars = 1..50 | ForEach-Object {
         [PSCustomObject]@{
-            X = Get-Random -Max $width
-            Y = (Get-Random -Max $starRows) + 15
-            Dx = Get-Random -Minimum -1 -Maximum 2
-            Dy = Get-Random -Minimum -1 -Maximum 2
-            C = $starChars[(Get-Random -Max $starChars.Count)]
+            X  = Get-Random -Max $w
+            Y  = (Get-Random -Max $rows) + 15
+            Dx = -1, -1, 0, 0, 1, 1 | Get-Random
+            Dy = -1, 0, 1 | Get-Random
+            C  = $chars[(Get-Random -Max $chars.Count)]
         }
     }
 
-    $old = @{}
+    $cur = @{}
     foreach ($s in $stars) {
-        $k = "$($s.X),$($s.Y)"
-        $old[$k] = $s.C
-        [Console]::SetCursorPosition($s.X, $s.Y)
+        $cur["$($s.X),$($s.Y)"] = $s.C
+        $Host.UI.RawUI.CursorPosition = @{ X = $s.X; Y = $s.Y }
         Write-Host $s.C -NoNewline -ForegroundColor DarkGray
     }
-    [Console]::SetCursorPosition(0, [Math]::Min(16, $height - 1))
+    $Host.UI.RawUI.CursorPosition = @{ X = 0; Y = [Math]::Min(16, $h - 1) }
 
     do {
-        Start-Sleep -Milliseconds 150
+        Start-Sleep -Milliseconds 100
 
-        foreach ($k in $old.Keys) {
+        foreach ($k in $cur.Keys) {
             $p = $k -split ','
-            [Console]::SetCursorPosition([int]$p[0], [int]$p[1])
+            $Host.UI.RawUI.CursorPosition = @{ X = [int]$p[0]; Y = [int]$p[1] }
             Write-Host ' ' -NoNewline
         }
-        $old.Clear()
+        $cur.Clear()
 
         foreach ($s in $stars) {
-            $s.X = ($s.X + $s.Dx + $width) % $width
-            $s.Y = ($s.Y + $s.Dy + $height) % $height
+            $s.X = ($s.X + $s.Dx + $w) % $w
+            $s.Y = ($s.Y + $s.Dy + $h) % $h
             if ($s.Y -lt 15) { $s.Y = 15 }
 
-            if ((Get-Random -Max 12) -eq 0) { $s.C = $starChars[(Get-Random -Max $starChars.Count)] }
-            if ((Get-Random -Max 20) -eq 0) { $s.Dx = Get-Random -Minimum -1 -Maximum 2; $s.Dy = Get-Random -Minimum -1 -Maximum 2 }
+            if ((Get-Random -Max 15) -eq 0) {
+                $s.Dx = -1, -1, 0, 0, 1, 1 | Get-Random
+                $s.Dy = -1, 0, 1 | Get-Random
+            }
+            if ((Get-Random -Max 10) -eq 0) {
+                $s.C = $chars[(Get-Random -Max $chars.Count)]
+            }
 
             $k = "$($s.X),$($s.Y)"
-            $old[$k] = $s.C
-            [Console]::SetCursorPosition($s.X, $s.Y)
+            $cur[$k] = $s.C
+            $Host.UI.RawUI.CursorPosition = @{ X = $s.X; Y = $s.Y }
             Write-Host $s.C -NoNewline -ForegroundColor DarkGray
         }
-        [Console]::SetCursorPosition(0, [Math]::Min(16, $height - 1))
+        $Host.UI.RawUI.CursorPosition = @{ X = 0; Y = [Math]::Min(16, $h - 1) }
 
         if ($Host.UI.RawUI.KeyAvailable) {
             return $Host.UI.RawUI.ReadKey('IncludeKeyDown,NoEcho')
