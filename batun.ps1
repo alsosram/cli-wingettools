@@ -1,4 +1,4 @@
-#Requires -Version 5.0
+﻿#Requires -Version 5.0
 
 param(
     [switch]$WhatIf
@@ -15,8 +15,8 @@ function Show-Banner {
 ╚█████╔╝███████╗██║░░░░░░██████╦╝██║░░██║░░░██║░░░╚██████╔╝██║░╚███║
 ░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═╝░░╚═╝░░░╚═╝░░░░╚═════╝░╚═╝░░╚══╝
 
-                        alsosar-cli-batun
-              Interactive batch uninstaller for Windows
+                         alsosar-cli-wingettools
+                      Winget tools for Windows management
 '@
     Write-Host $banner -ForegroundColor Cyan
 }
@@ -374,6 +374,97 @@ function Clear-AllPrinters {
     WaitForKey
 }
 
+function Run-AllUpgrades {
+    Write-Host '  Checking for available upgrades...' -ForegroundColor Yellow
+    $raw = winget upgrade --accept-source-agreements 2>&1
+    $exitCode = $LASTEXITCODE
+
+    $lines = $raw -split "`r`n|`n"
+    $headerIdx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^Name\s{2,}Id') { $headerIdx = $i; break }
+    }
+
+    $upgradable = @()
+    if ($headerIdx -ge 0) {
+        for ($i = $headerIdx + 2; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            $parts = $line -split '\s{2,}', 6
+            if ($parts.Count -ge 4) {
+                $upgradable += [PSCustomObject]@{
+                    Name    = $parts[0].Trim()
+                    Id      = $parts[1].Trim()
+                    Version = $parts[2].Trim()
+                    Available = $parts[3].Trim()
+                }
+            }
+        }
+    }
+
+    if ($upgradable.Count -eq 0) {
+        Write-Host '  All packages are up to date.' -ForegroundColor Green
+        Write-Host ''
+        Write-Host '  Press any key to continue...'
+        WaitForKey
+        return
+    }
+
+    Clear-Host
+    Show-Banner
+    Write-Host ''
+    Write-Host "  $($upgradable.Count) upgrade(s) available:" -ForegroundColor Yellow
+    Write-Host '  ------------------------------------------------------------' -ForegroundColor DarkGray
+    foreach ($p in $upgradable) {
+        Write-Host "    $($p.Name) — $($p.Version) → $($p.Available)" -ForegroundColor DarkYellow
+    }
+    Write-Host '  ------------------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  [Y] Upgrade all' -ForegroundColor Green
+    Write-Host '  [N] Cancel'
+    Write-Host ''
+
+    $key = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    if ([char]$key.Character -ne 'y' -and [char]$key.Character -ne 'Y') {
+        Write-Host '  Cancelled.' -ForegroundColor DarkGray
+        Write-Host '  Press any key to continue...'
+        WaitForKey
+        return
+    }
+
+    Clear-Host
+    Show-Banner
+    Write-Host ''
+    Write-Host "  Upgrading $($upgradable.Count) package(s)..." -ForegroundColor Yellow
+    Write-Host '  -------------------------------------------------' -ForegroundColor DarkGray
+
+    $ok = 0; $fail = 0
+    for ($i = 0; $i -lt $upgradable.Count; $i++) {
+        $p = $upgradable[$i]
+        Write-Progress -Activity 'Batch Upgrades' -Status $p.Name -PercentComplete (($i / $upgradable.Count) * 100) -CurrentOperation "$($i+1)/$($upgradable.Count)"
+        Write-Host "  [$($i+1)/$($upgradable.Count)] $($p.Name) ... " -NoNewline
+
+        $out = winget upgrade $p.Id --accept-source-agreements 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host 'OK' -ForegroundColor Green; $ok++
+        } else {
+            Write-Host 'FAILED' -ForegroundColor Red; $fail++
+        }
+    }
+    Write-Progress -Activity 'Batch Upgrades' -Completed
+
+    Write-Host ''
+    Write-Host '  -------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host '  Upgrades complete: ' -NoNewline
+    Write-Host "$ok done" -NoNewline -ForegroundColor Green
+    Write-Host ', ' -NoNewline
+    Write-Host "$fail failed" -NoNewline -ForegroundColor Red
+    Write-Host ''
+    Write-Host ''
+    Write-Host '  Press any key to continue...'
+    WaitForKey
+}
+
 # ------------------------------------------------------------------
 #  MAIN
 # ------------------------------------------------------------------
@@ -398,18 +489,21 @@ while ($keepGoing) {
     Show-Banner
     Write-Host ''
     Write-Host '  [U] Uninstall Programs' -ForegroundColor Yellow
+    Write-Host '  [G] Upgrade All Software (winget)' -ForegroundColor Green
     Write-Host '  [P] Printer Cleanup — remove all printers and ports' -ForegroundColor Red
     Write-Host '  [Q] Quit'
     Write-Host ''
 
     $modeKey = $host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
     switch ([char]$modeKey.Character) {
-        'u' { }
-        'U' { }
+        'g' { Run-AllUpgrades; continue }
+        'G' { Run-AllUpgrades; continue }
         'p' { Clear-AllPrinters; continue }
         'P' { Clear-AllPrinters; continue }
         'q' { $keepGoing = $false; continue }
         'Q' { $keepGoing = $false; continue }
+        'u' { }
+        'U' { }
         default { continue }
     }
 
