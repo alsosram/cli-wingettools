@@ -1,10 +1,22 @@
 ﻿#Requires -Version 5.0
 
 param(
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    [switch]$GUI
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($GUI) {
+    $guiScript = Join-Path $PSScriptRoot 'batun-gui.ps1'
+    if (Test-Path $guiScript) {
+        & $guiScript
+    } else {
+        Write-Host 'Downloading GUI component...'
+        irm https://raw.githubusercontent.com/alsosram/cli-wingettools/master/batun-gui.ps1 | iex
+    }
+    return
+}
 
 try {
     $buf = $Host.UI.RawUI.BufferSize

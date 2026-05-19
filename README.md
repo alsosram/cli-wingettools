@@ -11,23 +11,25 @@
 
 Winget tools for Windows management — batch uninstall, bulk upgrade, and printer cleanup.
 
+Two modes: **terminal** (keyboard-driven) and **GUI** (clickable window).
+
 ## Usage
 
-Run with no arguments for interactive mode:
+### Terminal mode (default)
 
+```powershell
+irm https://raw.githubusercontent.com/alsosram/cli-wingettools/master/batun.ps1 | iex
 ```
-batun
+
+Press a letter key to pick an option: `U` Uninstall, `G` Upgrade, `E` Export, `I` Import, `P` Printer Cleanup, `Q` Quit.
+
+### GUI mode
+
+```powershell
+irm https://raw.githubusercontent.com/alsosram/cli-wingettools/master/batun.ps1 -GUI | iex
 ```
 
-Or double-click `batun.bat` in Explorer.
-
-### Run Directly From GitHub (no download required)
-
-From **PowerShell 5+** (run as administrator for best results):
-
-```
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/alsosram/cli-wingettools/master/batun.ps1)))
-```
+Opens a proper Windows window with buttons and a live output panel — no keyboard navigation needed.
 
 ## Options
 
