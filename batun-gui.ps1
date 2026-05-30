@@ -287,7 +287,7 @@ $form.Controls.Add($grp)
 
 # Status bar
 $status = New-Object System.Windows.Forms.Label
-$status.Text = '  Ready  |  alsosram/cli-wingettools'
+$status.Text = '  Ready  |  sosramalex/cli-wingettools'
 $status.Font = $font
 $status.ForeColor = $accent
 $status.BackColor = [System.Drawing.Color]::FromArgb(8, 8, 8)

@@ -16,7 +16,7 @@ if ($GUI) {
         }
     }
     Write-Host 'Downloading GUI component...'
-    irm https://raw.githubusercontent.com/alsosram/cli-wingettools/master/batun-gui.ps1 | iex
+    irm https://raw.githubusercontent.com/sosramalex/cli-wingettools/master/batun-gui.ps1 | iex
     return
 }
 

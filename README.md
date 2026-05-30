@@ -18,7 +18,7 @@ Two modes: **terminal** (keyboard-driven) and **GUI** (clickable window).
 ### Terminal mode (default)
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/alsosram/cli-wingettools/master/batun.ps1)))
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/sosramalex/cli-wingettools/master/batun.ps1)))
 ```
 
 Press a letter key to pick an option: `U` Uninstall, `G` Upgrade, `E` Export, `I` Import, `P` Printer Cleanup, `Q` Quit.
@@ -26,7 +26,7 @@ Press a letter key to pick an option: `U` Uninstall, `G` Upgrade, `E` Export, `I
 ### GUI mode
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/alsosram/cli-wingettools/master/batun.ps1))) -GUI
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/sosramalex/cli-wingettools/master/batun.ps1))) -GUI
 ```
 
 Opens a proper Windows window with buttons and a live output panel — no keyboard navigation needed.
